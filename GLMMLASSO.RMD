@@ -1,0 +1,87 @@
+---
+title: "Demonstration of Simplified Methods from Young et al"
+author: "JAS"
+date: " "
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Similar to Young et al, I will demonstrate using a mixed linear model combined with LASSO for forecasting.This is a *simplified* version of what was done in the Young et al paper. But likely enough that you get the gist of what ML can add to this type of forecasting approach.
+
+Data example: We are interested in forecasting asthma hospitalizations based on pollution and weather variables. We live in a fictional country that consists of 10 small states. Each state contains one hospital that counts all of the hospitalizations by primary cause. Each state has the same air and weather monitoring system, making exposure measurement error the same across all areas. Since the country is small, there are few doctors and medical resources. Knowing when and where individuals may require critical services for outcomes is important. We are being tasked with trying to forecast asthma hospitalizations over space and time in order to plan resource allocation over the coming year.
+
+We have collected data for ten states for ten weeks. 
+
+
+```{r demo}
+library(glmmLasso)
+library(readxl)
+library(caret)
+
+#Read-in training data
+glm_datav2 <- read_excel("C:/Users/js5406/OneDrive - cumc.columbia.edu/ML_Epi/glm_datav2.xlsx")
+
+#Read-in validation data
+
+#Scaling data
+glm_datav2[,c(4:12)]<-scale(glm_datav2[,c(4:12)], center=TRUE, scale=TRUE)
+glm_datav2<-data.frame(glm_datav2)
+glm_datav2$State<-as.factor(glm_datav2$State)
+glm_datav2$Week<-as.factor(glm_datav2$Week)
+
+#Lasso with lambda=1
+set.seed(100)
+lm1 <- glmmLasso(case_count ~ PM25+NO2+OZ+NDI+pct_precip+AvgTemp+AvgHumidity+MaxTemp, rnd = list(State=~1, Week=~1), family=poisson( link=log), lambda=1, data = glm_datav2)
+summary(lm1)
+lm1$bic
+
+#Lasso with lambda=10
+lm2 <- glmmLasso(case_count ~ PM25+NO2+OZ+NDI+pct_precip+AvgTemp+AvgHumidity+MaxTemp, rnd = list(State=~1, Week=~1), family=poisson( link=log), lambda=10, data = glm_datav2)
+summary(lm2)
+lm2$bic
+
+#Lasso with lambda=100
+lm3 <- glmmLasso(case_count ~ PM25+NO2+OZ+NDI+pct_precip+AvgTemp+AvgHumidity+MaxTemp, rnd = list(State=~1, Week=~1), family=poisson( link=log), lambda=100, data = glm_datav2)
+summary(lm3)
+lm3$bic
+
+#Identify model with smallest BIC
+which.min(rbind(lm1$bic, lm2$bic, lm3$bic))
+
+
+```
+
+```{r predict}
+library(caret)
+
+glm_datav3 <- read_excel("C:/Users/js5406/OneDrive - cumc.columbia.edu/ML_Epi/glm_datav3.xlsx")
+
+glm_datav3[,c(4:12)]<-scale(glm_datav3[,c(4:12)], center=TRUE, scale=TRUE)
+glm_datav3<-data.frame(glm_datav3)
+glm_datav3$State<-as.factor(glm_datav3$State)
+glm_datav3$Week<-as.factor(glm_datav3$Week)
+
+predicted<-predict(lm1, glm_datav3)
+
+RMSE(predicted, glm_datav3$case_count)
+postResample(predicted, glm_datav3$case_count)
+
+plot(glm_datav3$case_count, predicted)
+
+library(ggplot2)
+#Example predictions by State
+plot.data<-cbind(predicted, glm_datav3)
+ggplot(plot.data, aes(x=case_count, y=predicted, colour=State))+geom_point()+facet_wrap(~State)
+
+ggplot(plot.data, aes(x=case_count, y=predicted, colour=Week))+geom_point()+facet_wrap(~Week)
+
+ggplot(plot.data, aes(x=case_count, y=predicted, colour=State))+geom_point()+facet_wrap(~Week)
+
+ggplot(plot.data, aes(x=case_count, y=predicted, colour=Week))+geom_point()+facet_wrap(~State)
+```
+
